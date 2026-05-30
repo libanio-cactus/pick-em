@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Pick'Em Copa 2026 — Foundations híbridos (7K + heat dourado)
+   Visual nativo da plataforma 7K (navy frio + lime) com o
+   dourado #F5B92B reservado para streak / odds em destaque.
+   ============================================================ */
+
+@theme {
+  /* Superfícies (navy frio 7K) */
+  --color-base: #0d1117; /* fundo de página */
+  --color-surface: #161b22; /* cards, sidebar */
+  --color-surface-2: #1c222b; /* inputs, dropdowns, modais elevados */
+  --color-surface-3: #232a35; /* hover de superfície */
+
+  /* Bordas */
+  --color-border: #252b36; /* divider sutil */
+  --color-border-strong: #323a47; /* divider/borda com mais peso */
+
+  /* Marca — verde-lime (CTA, ativo, identidade 7K) */
+  --color-brand: #c5f230;
+  --color-brand-hover: #d4ff45;
+  --color-brand-dim: #9bc01f;
+  --color-on-brand: #0d1117; /* texto sobre lime */
+
+  /* Heat — dourado, reservado a streak e odds em destaque */
+  --color-heat: #f5b92b;
+  --color-heat-hover: #ffc94a;
+  --color-heat-soft: rgba(245, 185, 43, 0.12);
+
+  /* Texto */
+  --color-text: #f5f7fa; /* primário */
+  --color-text-2: #8b93a1; /* secundário */
+  --color-text-3: #5c6675; /* terciário / disabled */
+
+  /* Semânticas */
+  --color-error: #e15a4c;
+  --color-error-soft: rgba(225, 90, 76, 0.12);
+  --color-success: #8bc34a;
+  --color-success-soft: rgba(139, 195, 74, 0.14);
+  --color-info: #4a90e2;
+  --color-info-soft: rgba(74, 144, 226, 0.1);
+
+  /* Cores de seleção (Copa) — verde campo, textura de fundo */
+  --color-pitch: #14331f;
+
+  /* Tipografia */
+  --font-heading: var(--font-raleway), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+
+  /* Radius */
+  --radius-btn: 8px;
+  --radius-card: 16px;
+
+  /* Sombra / elevation */
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-base);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
+}
+
+/* Números sempre em Montserrat (body), mesmo dentro de headings.
+   Todos os valores numéricos do projeto usam `tabular-nums`, então essa
+   regra (fora de @layer) sobrepõe o font-heading nesses elementos. */
+.tabular-nums {
+  font-family: var(--font-body);
+}
+
+/* Foco visível padrão (acessibilidade — nunca remover sem substituir) */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Scrollbar sutil no tema escuro */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* ============================================================
+   Animações de produto
+   ============================================================ */
+
+/* Glow pulsante do streak ativo (heat dourado) */
+@keyframes heat-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 185, 43, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 18px 4px rgba(245, 185, 43, 0.35);
+  }
+}
+.streak-glow {
+  animation: heat-pulse 2s ease-in-out infinite;
+}
+
+/* Contagem do retorno potencial — leve "pop" ao mudar */
+@keyframes value-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.value-pop {
+  animation: value-pop 0.35s ease-out;
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -480px 0;
+  }
+  100% {
+    background-position: 480px 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2) 0%,
+    var(--color-surface-3) 50%,
+    var(--color-surface-2) 100%
+  );
+  background-size: 960px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streak-glow,
+  .value-pop,
+  .skeleton {
+    animation: none;
+  }
+}
