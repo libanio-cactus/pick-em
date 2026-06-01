@@ -24,6 +24,13 @@ export interface Match {
 export type PicksMap = Record<string, PickOption>; // matchId -> escolha
 export type OrderMap = Record<string, string[]>; // groupId -> ordem prevista (codes)
 
+export type TieId =
+  | "o1" | "o2" | "o3" | "o4" | "o5" | "o6" | "o7" | "o8" // oitavas
+  | "q1" | "q2" | "q3" | "q4" // quartas
+  | "s1" | "s2" // semis
+  | "fi"; // final
+export type BracketPicks = Partial<Record<TieId, string>>; // tie -> teamCode
+
 export interface Member {
   id: string;
   name: string;
@@ -31,14 +38,16 @@ export interface Member {
   isCurrentUser?: boolean;
   picks: PicksMap; // palpites de jogos (V/E/D)
   order: OrderMap; // classificação prevista por grupo
+  bracket: BracketPicks; // mata-mata
   inPool: boolean;
 }
 
 export interface Standing {
   member: Member;
-  points: number; // total (tabela + jogos)
-  matchPts: number; // pontos da acumuladora de jogos
+  points: number; // total (jogos + tabela + bracket)
+  matchPts: number; // pontos dos jogos (com streak)
   tablePts: number; // pontos de classificação (tabela)
+  bracketPts: number; // pontos do mata-mata
   correct: number;
   decided: number; // jogos já apurados
   accuracy: number; // 0..1 sobre os jogos apurados

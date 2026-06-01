@@ -4,7 +4,8 @@ import { Modal } from "@/components/ui/Modal";
 import type { WCGroup } from "@/data/groups";
 import type { Match, PickOption, PicksMap } from "@/data/types";
 import { cn } from "@/lib/cn";
-import { odds as fmtOdds } from "@/lib/format";
+import { num } from "@/lib/format";
+import { matchPoints } from "@/lib/scoring";
 import { CheckIcon } from "@/components/ui/icons";
 
 export function GroupMatchesModal({
@@ -30,7 +31,7 @@ export function GroupMatchesModal({
       open={open}
       onClose={onClose}
       title={`Jogos do Grupo ${group.id}`}
-      description="Defina o resultado de cada partida: vitória, empate ou virada. As odds entram na sua acumuladora."
+      description="Defina o resultado de cada partida: vitória, empate ou virada. Cravar zebra vale mais pontos que o favorito."
       width={540}
       footer={
         <div className="flex w-full items-center justify-between">
@@ -126,7 +127,7 @@ function MatchRow({
                   isResult ? "text-success" : missed ? "text-error" : "text-heat",
                 )}
               >
-                {isResult ? <CheckIcon width={14} height={14} /> : fmtOdds(o.odd)}
+                {isResult ? <CheckIcon width={14} height={14} /> : `+${num(matchPoints(o.odd))}`}
               </span>
             </button>
           );

@@ -5,13 +5,13 @@ import type { WCGroup } from "@/data/groups";
 import {
   QUALIFY_SLOTS,
   evaluateOrder,
-  placementOdd,
-  orderOdd,
+  placementPoints,
+  orderPotentialPoints,
   type RowState,
 } from "@/data/groups";
 import { TEAMS } from "@/data/teams";
 import { cn } from "@/lib/cn";
-import { odds as fmtOdds, multiplier } from "@/lib/format";
+import { num } from "@/lib/format";
 import { CheckIcon, BallIcon } from "@/components/ui/icons";
 
 function move<T>(arr: T[], from: number, to: number): T[] {
@@ -77,9 +77,9 @@ export function StandingsTable({
           </span>
         ) : (
           <span className="text-[11px] text-text-2">
-            odd da ordem{" "}
+            ordem exata{" "}
             <span className="font-heading font-bold text-heat tabular-nums">
-              {multiplier(orderOdd(group.id, order))}
+              +{num(orderPotentialPoints(group.id, order))} pts
             </span>
           </span>
         )}
@@ -107,7 +107,7 @@ export function StandingsTable({
                 pos={i + 1}
                 flag={t.flag}
                 name={t.name}
-                odd={placementOdd(group.id, code, i)}
+                pointsForPos={placementPoints(group.id, code, i)}
                 advances={advances}
                 state={state}
                 interactive={interactive}
@@ -165,7 +165,7 @@ function Row({
   pos,
   flag,
   name,
-  odd,
+  pointsForPos,
   advances,
   state,
   interactive,
@@ -181,7 +181,7 @@ function Row({
   pos: number;
   flag: string;
   name: string;
-  odd: number;
+  pointsForPos: number;
   advances: boolean;
   state: RowState | undefined;
   interactive: boolean;
@@ -240,8 +240,9 @@ function Row({
       {apurado ? (
         <StateBadge state={state!} />
       ) : (
-        <span className="font-heading text-base font-bold tabular-nums text-heat">
-          {fmtOdds(odd)}
+        <span className="font-heading text-sm font-bold tabular-nums text-heat">
+          +{num(pointsForPos)}
+          <span className="text-[10px] font-medium text-text-3 ml-0.5">pts</span>
         </span>
       )}
 

@@ -7,21 +7,23 @@ import { cn } from "@/lib/cn";
 
 export function PoolMeter({
   members,
+  cota,
   leaderName,
 }: {
   members: Member[];
+  cota: number;
   leaderName?: string;
 }) {
-  const pool = poolSummary(members);
+  const pool = poolSummary(members, cota);
 
   return (
     <div className="rounded-card border border-heat/40 bg-gradient-to-br from-heat-soft to-transparent p-5">
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-text-2">
-          Prêmio do pool
+          Prêmio do bolão
         </p>
         <span className="text-[11px] font-medium text-text-2">
-          {pool.count} no pool
+          {pool.count} no bolão
         </span>
       </div>
 
@@ -30,11 +32,9 @@ export function PoolMeter({
       </p>
 
       <div className="mt-1 text-xs text-text-2">
-        {pool.count} × {money(GROUP.poolEntry)} − {percent(GROUP.houseMarginPct)}{" "}
-        margem da casa
+        {pool.count} × {money(cota)} − {percent(GROUP.houseMarginPct)} margem da casa
       </div>
 
-      {/* avatares dos participantes no pool */}
       <div className="mt-4 flex items-center gap-2">
         <div className="flex -space-x-2">
           {pool.participants.map((p) => (
@@ -51,14 +51,12 @@ export function PoolMeter({
             </span>
           ))}
         </div>
-        <span className="text-xs text-text-3">
-          entraram com {money(GROUP.poolEntry)}
-        </span>
+        <span className="text-xs text-text-3">entraram com {money(cota)}</span>
       </div>
 
       {leaderName && (
         <div className="mt-4 rounded-btn border border-heat/30 bg-base/40 px-3 py-2.5 text-xs text-text-2">
-          Quem terminar a fase em 1º leva o prêmio. Agora:{" "}
+          Quem terminar em 1º leva (empate divide). Agora:{" "}
           <span className="text-heat font-semibold">{leaderName}</span> na frente.
         </div>
       )}

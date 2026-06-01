@@ -81,7 +81,7 @@ export function RankingTable({ rows }: { rows: Standing[] }) {
                 {r.points}
               </span>
               <span className="block text-[10px] text-text-3 tabular-nums">
-                {r.tablePts}t · {r.matchPts}j
+                {r.tablePts}t · {r.matchPts}j{r.bracketPts > 0 ? ` · ${r.bracketPts}m` : ""}
               </span>
             </span>
 
@@ -109,8 +109,8 @@ export function RankingTable({ rows }: { rows: Standing[] }) {
       })}
 
       <p className="mt-1 px-3 text-[11px] text-text-3">
-        Pontos = tabela (t) + jogos (j). O ranking mostra só desempenho — valores
-        apostados e ganhos de cada participante são privados.
+        Pontos = jogos (j) + tabela (t) + mata-mata (m). Ranking 4fun, por
+        desempenho.
       </p>
     </div>
   );

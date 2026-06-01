@@ -2,399 +2,311 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Container, PageHeader } from "@/components/ui/Page";
-import { Card, SectionTitle } from "@/components/ui/Card";
-import { Button, ButtonLink } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { RankingTable } from "@/components/grupos/RankingTable";
-import { PoolMeter } from "@/components/grupos/PoolMeter";
+import { ArrowRight, CheckIcon, PlusIcon, UsersIcon } from "@/components/ui/icons";
+import { COTA_PRESETS, standings } from "@/data/friends";
 import {
-  ArrowRight,
-  CheckIcon,
-  CopyIcon,
-  PlusIcon,
-  UsersIcon,
-} from "@/components/ui/icons";
-import { FRIENDS_GROUP as GROUP, standings, poolSummary } from "@/data/friends";
-import { TOTAL_MATCHES } from "@/data/groups";
-import {
-  useMembers,
   usePickEm,
-  useGroupPickem,
-  ensureGroupPickem,
-  joinPool,
+  useGroups,
+  useGroupMembers,
   createGroup,
   joinGroup,
-  leaveGroup,
+  type UserGroup,
 } from "@/lib/store";
-import { money, percent } from "@/lib/format";
+import { money, num } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
-export default function GrupoPage() {
-  const { inGroup } = usePickEm();
-  return inGroup ? <GroupView /> : <GroupEmptyState />;
-}
-
-/* ════════════ Primeiro acesso: criar ou entrar ════════════ */
-function GroupEmptyState() {
-  const [createName, setCreateName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [joining, setJoining] = useState(false);
-  const [joinError, setJoinError] = useState(false);
-
-  function handleCreate() {
-    if (creating) return;
-    setCreating(true);
-    setTimeout(() => createGroup(createName), 600);
-  }
-  function handleJoin() {
-    const code = joinCode.trim();
-    if (!code) {
-      setJoinError(true);
-      return;
-    }
-    setJoining(true);
-    setTimeout(() => joinGroup(code), 600);
-  }
-
-  return (
-    <Container className="max-w-4xl">
-      <PageHeader
-        eyebrow="Jogar com amigos"
-        title="Entre num grupo para começar"
-        description="Você ainda não está em nenhum grupo. Crie o seu e convide a galera, ou entre no grupo de um amigo com um código ou link de convite."
-      />
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Criar grupo */}
-        <Card className="p-6 flex flex-col">
-          <span className="grid place-items-center h-11 w-11 rounded-card bg-brand/15 text-brand mb-3">
-            <PlusIcon width={22} height={22} />
-          </span>
-          <h2 className="font-heading text-lg font-bold text-text">
-            Criar um grupo
-          </h2>
-          <p className="text-sm text-text-2 mt-1 mb-4">
-            Você vira o dono, gera um link de convite e cada amigo monta o próprio
-            pick&apos;em.
-          </p>
-          <label htmlFor="g-name" className="text-xs font-medium text-text-2 mb-1.5">
-            Nome do grupo
-          </label>
-          <input
-            id="g-name"
-            value={createName}
-            onChange={(e) => setCreateName(e.target.value)}
-            maxLength={40}
-            placeholder="Ex: Resenha da Copa"
-            className="w-full rounded-btn border border-border bg-base px-3 h-11 text-text outline-none transition-colors focus:border-[rgba(197,242,48,0.55)] placeholder:text-text-3 mb-4"
-          />
-          <Button fullWidth disabled={creating} onClick={handleCreate} className="mt-auto">
-            {creating ? "Criando…" : "Criar grupo"}
-          </Button>
-        </Card>
-
-        {/* Entrar com código */}
-        <Card className="p-6 flex flex-col">
-          <span className="grid place-items-center h-11 w-11 rounded-card bg-surface-2 text-text-2 mb-3">
-            <UsersIcon width={22} height={22} />
-          </span>
-          <h2 className="font-heading text-lg font-bold text-text">
-            Entrar num grupo
-          </h2>
-          <p className="text-sm text-text-2 mt-1 mb-4">
-            Recebeu um convite? Cole o código do grupo. Por link de convite, é só
-            abrir o link que você entra direto.
-          </p>
-          <label htmlFor="g-code" className="text-xs font-medium text-text-2 mb-1.5">
-            Código de convite
-          </label>
-          <input
-            id="g-code"
-            value={joinCode}
-            onChange={(e) => {
-              setJoinCode(e.target.value.toUpperCase());
-              setJoinError(false);
-            }}
-            placeholder="Ex: COPA-7K-4F2A"
-            aria-invalid={joinError}
-            className={cn(
-              "w-full rounded-btn border bg-base px-3 h-11 text-text outline-none transition-colors placeholder:text-text-3 tracking-wider mb-1",
-              joinError ? "border-error" : "border-border focus:border-[rgba(197,242,48,0.55)]",
-            )}
-          />
-          <p className={cn("text-xs mb-3", joinError ? "text-error" : "text-text-3")}>
-            {joinError ? "Informe um código para entrar." : "Dica da demo: use COPA-7K-4F2A."}
-          </p>
-          <Button
-            variant="secondary"
-            fullWidth
-            disabled={joining}
-            onClick={handleJoin}
-            className="mt-auto"
-          >
-            {joining ? "Entrando…" : "Entrar no grupo"}
-          </Button>
-        </Card>
-      </div>
-    </Container>
-  );
-}
-
-/* ════════════ Dentro do grupo ════════════ */
-function GroupView() {
+export default function GruposPage() {
   const router = useRouter();
-  const members = useMembers();
-  const { revealed, inPool, groupName } = usePickEm();
-  const groupPe = useGroupPickem();
-  const rows = standings(members, revealed);
-  const leader = rows[0];
-  const pool = poolSummary(members);
-  const myPickEmReady = !!groupPe && Object.keys(groupPe.picks).length > 0;
-  const friendsReady = members.filter((m) => !m.isCurrentUser);
-  const name = groupName || GROUP.name;
-
-  function abrirMeuPickem() {
-    const id = ensureGroupPickem();
-    router.push(`/palpites/${id}`);
-  }
-
-  const [poolOpen, setPoolOpen] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [joining, setJoining] = useState(false);
-  const [copied, setCopied] = useState<"code" | "link" | null>(null);
-
-  const projectedWithUser = inPool
-    ? pool
-    : poolSummary(members.map((m) => (m.isCurrentUser ? { ...m, inPool: true } : m)));
-
-  function handleJoin() {
-    setJoining(true);
-    setTimeout(() => {
-      joinPool();
-      setJoining(false);
-      setPoolOpen(false);
-    }, 600);
-  }
-  async function copy(value: string, which: "code" | "link") {
-    try {
-      await navigator.clipboard.writeText(value);
-    } catch {
-      /* noop */
-    }
-    setCopied(which);
-    setTimeout(() => setCopied(null), 1600);
-  }
+  const groups = useGroups();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
 
   return (
     <Container>
-      {/* Header do grupo */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <span className="grid place-items-center h-12 w-12 rounded-card bg-brand/12 text-2xl">
-            ⚽
-          </span>
-          <div>
-            <h2 className="font-heading text-2xl font-bold text-text">{name}</h2>
-            <p className="text-xs text-text-2 flex items-center gap-1.5">
-              <UsersIcon width={14} height={14} />
-              {members.length} participantes · grupo privado
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={() => leaveGroup()}>
-            Sair do grupo
-          </Button>
-          <Button variant="secondary" onClick={() => setInviteOpen(true)}>
-            <CopyIcon width={18} height={18} />
-            Convidar
-          </Button>
-        </div>
-      </div>
-
-      {/* Seu pick'em no grupo */}
-      <div className="mb-5 rounded-card border border-border bg-surface p-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-3">
-          <span
-            className={cn(
-              "grid place-items-center h-11 w-11 rounded-card shrink-0",
-              myPickEmReady ? "bg-success/15 text-success" : "bg-brand/12 text-brand",
-            )}
-          >
-            {myPickEmReady ? <CheckIcon width={22} height={22} /> : <span className="text-xl">⭐</span>}
-          </span>
-          <div>
-            <p className="font-heading text-sm font-bold text-text">
-              {myPickEmReady ? "Seu pick'em está montado" : "Monte seu pick'em no grupo"}
-            </p>
-            <p className="text-xs text-text-2">
-              Cada participante faz o próprio — individual e privado.{" "}
-              {!myPickEmReady && "Os amigos já montaram os deles."}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-1.5">
-            <div className="flex -space-x-2">
-              {friendsReady.map((m) => (
-                <span
-                  key={m.id}
-                  title={`${m.name} · pick'em pronto`}
-                  className="relative grid place-items-center h-8 w-8 rounded-full border-2 border-surface bg-surface-2 text-sm"
-                  aria-hidden="true"
-                >
-                  {m.avatar}
-                  <span className="absolute -bottom-0.5 -right-0.5 grid place-items-center h-3.5 w-3.5 rounded-full bg-success text-on-brand">
-                    <CheckIcon width={9} height={9} />
-                  </span>
-                </span>
-              ))}
+      <PageHeader
+        eyebrow="Jogar com amigos"
+        title="Meus grupos"
+        description="Você pode estar em vários grupos ao mesmo tempo — cada um com seu próprio bolão. Seu pick'em vale em todos."
+        actions={
+          groups.length > 0 ? (
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" onClick={() => setJoinOpen(true)}>
+                Entrar com código
+              </Button>
+              <Button onClick={() => setCreateOpen(true)}>
+                <PlusIcon width={18} height={18} />
+                Criar grupo
+              </Button>
             </div>
-            <span className="text-xs text-text-3">prontos</span>
-          </div>
-          <Button variant={myPickEmReady ? "secondary" : "primary"} onClick={abrirMeuPickem}>
-            {myPickEmReady ? "Editar pick'em" : "Montar meu pick'em"}
-            <ArrowRight width={18} height={18} />
-          </Button>
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
-      {revealed === 0 && (
-        <div className="mb-5 rounded-card border border-info/30 bg-[var(--color-info-soft)] px-4 py-3 text-sm text-text-2">
-          O ranking ganha vida conforme os jogos são apurados. Avance a simulação em{" "}
-          <ButtonLink href="/palpites" variant="ghost" className="!inline !h-auto !px-1 !text-info">
-            Meus palpites
-          </ButtonLink>
-          .
+      {groups.length === 0 ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card className="p-6 flex flex-col">
+            <span className="grid place-items-center h-11 w-11 rounded-card bg-brand/15 text-brand mb-3">
+              <PlusIcon width={22} height={22} />
+            </span>
+            <h2 className="font-heading text-lg font-bold text-text">Criar um grupo</h2>
+            <p className="text-sm text-text-2 mt-1 mb-4 flex-1">
+              Vire o dono, defina a cota do bolão e convide a galera.
+            </p>
+            <Button fullWidth onClick={() => setCreateOpen(true)}>Criar grupo</Button>
+          </Card>
+          <Card className="p-6 flex flex-col">
+            <span className="grid place-items-center h-11 w-11 rounded-card bg-surface-2 text-text-2 mb-3">
+              <UsersIcon width={22} height={22} />
+            </span>
+            <h2 className="font-heading text-lg font-bold text-text">Entrar num grupo</h2>
+            <p className="text-sm text-text-2 mt-1 mb-4 flex-1">
+              Tem um código ou link de convite? Entre no grupo de um amigo.
+            </p>
+            <Button variant="secondary" fullWidth onClick={() => setJoinOpen(true)}>
+              Entrar com código
+            </Button>
+          </Card>
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {groups.map((g) => (
+            <GroupCard key={g.id} group={g} />
+          ))}
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className="rounded-card border border-dashed border-border bg-surface p-5 flex flex-col items-center justify-center text-center min-h-[150px] transition-colors hover:border-brand/50 group"
+          >
+            <span className="grid place-items-center h-11 w-11 rounded-full bg-surface-2 text-brand mb-2 group-hover:bg-brand/15">
+              <PlusIcon />
+            </span>
+            <span className="font-heading text-sm font-bold text-text">Novo grupo</span>
+            <span className="text-xs text-text-2 mt-0.5">ou entre com um código</span>
+          </button>
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px] items-start">
-        <Card className="p-5">
-          <div className="flex items-center justify-between mb-4">
-            <SectionTitle>Ranking da fase</SectionTitle>
-            <span className="text-xs text-text-3">{revealed}/{TOTAL_MATCHES} jogos apurados</span>
-          </div>
-          <RankingTable rows={rows} />
-        </Card>
-
-        <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
-          <PoolMeter members={members} leaderName={leader.member.name} />
-          {inPool ? (
-            <div className="rounded-card border border-success/40 bg-success-soft p-4 flex items-center gap-3">
-              <CheckIcon width={20} height={20} className="text-success shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-text">Você está no pool</p>
-                <p className="text-xs text-text-2">
-                  Entrou com {money(GROUP.poolEntry)}. Termine em 1º para levar.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <Button size="lg" variant="heat" fullWidth onClick={() => setPoolOpen(true)}>
-              Entrar no pool · {money(GROUP.poolEntry)}
-            </Button>
-          )}
-          <p className="text-center text-[11px] text-text-3 px-2">
-            O pool é opcional. Quem não entra continua valendo no ranking.
-          </p>
-        </aside>
-      </div>
-
-      {/* Modal: entrar no pool */}
-      <Modal
-        open={poolOpen}
-        onClose={() => setPoolOpen(false)}
-        title="Entrar no pool"
-        description="Sua entrada vira parte do prêmio. O valor que cada um aposta no próprio pick'em segue privado."
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setPoolOpen(false)}>Cancelar</Button>
-            <Button variant="heat" onClick={handleJoin} disabled={joining}>
-              {joining ? "Entrando…" : `Confirmar ${money(GROUP.poolEntry)}`}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3 py-1">
-          <Row label="Valor de entrada" value={money(GROUP.poolEntry)} />
-          <Row label="Participantes no pool" value={`${pool.count} → ${projectedWithUser.count}`} />
-          <Row label="Margem da casa" value={percent(GROUP.houseMarginPct)} muted />
-          <div className="h-px bg-border my-1" />
-          <Row label="Prêmio projetado" value={money(projectedWithUser.prize)} highlight />
-        </div>
-      </Modal>
-
-      {/* Modal: convite */}
-      <Modal
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        title="Convidar para o grupo"
-        description="Quem entrar monta o próprio pick'em e cai no ranking."
-        footer={<Button onClick={() => setInviteOpen(false)}>Fechar</Button>}
-      >
-        <div className="space-y-4 py-1">
-          <div>
-            <p className="text-xs font-medium text-text-2 mb-1.5">Código</p>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 rounded-btn border border-border bg-base px-4 h-12 flex items-center font-heading text-lg font-bold tracking-widest text-brand">
-                {GROUP.inviteCode}
-              </div>
-              <CopyBtn copied={copied === "code"} onClick={() => copy(GROUP.inviteCode, "code")} />
-            </div>
-          </div>
-          <div>
-            <p className="text-xs font-medium text-text-2 mb-1.5">Link</p>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 rounded-btn border border-border bg-base px-4 h-12 flex items-center text-sm text-text-2 truncate">
-                {GROUP.inviteLink}
-              </div>
-              <CopyBtn copied={copied === "link"} onClick={() => copy(GROUP.inviteLink, "link")} />
-            </div>
-          </div>
-        </div>
-      </Modal>
+      <CreateGroupModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreate={(name, cota) => {
+          const id = createGroup(name, cota);
+          router.push(`/grupo/${id}`);
+        }}
+      />
+      <JoinGroupModal
+        open={joinOpen}
+        onClose={() => setJoinOpen(false)}
+        onJoin={(code) => {
+          const id = joinGroup(code);
+          router.push(`/grupo/${id}`);
+        }}
+      />
     </Container>
   );
 }
 
-function CopyBtn({ copied, onClick }: { copied: boolean; onClick: () => void }) {
+function GroupCard({ group }: { group: UserGroup }) {
+  const { revealed } = usePickEm();
+  const members = useGroupMembers(group.id);
+  const rows = standings(members, revealed);
+  const me = rows.find((r) => r.member.isCurrentUser)!;
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Copiar"
-      className={cn(
-        "grid place-items-center h-12 w-12 rounded-btn border shrink-0 transition-colors",
-        copied
-          ? "border-success text-success bg-success-soft"
-          : "border-border text-text-2 hover:text-text hover:border-border-strong",
-      )}
+    <Link
+      href={`/grupo/${group.id}`}
+      className="rounded-card border border-border bg-surface p-5 transition-colors hover:border-border-strong"
     >
-      {copied ? <CheckIcon width={18} height={18} /> : <CopyIcon width={18} height={18} />}
-    </button>
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="grid place-items-center h-10 w-10 rounded-card bg-brand/12 text-xl">⚽</span>
+          <div className="min-w-0">
+            <p className="font-heading text-sm font-bold text-text truncate">{group.name}</p>
+            <p className="text-[11px] text-text-2 flex items-center gap-1">
+              <UsersIcon width={12} height={12} /> {members.length} · cota {money(group.cota)}
+            </p>
+          </div>
+        </div>
+        <ArrowRight className="text-text-3 shrink-0" />
+      </div>
+      <div className="flex items-center justify-between rounded-btn bg-surface-2 px-3 h-11">
+        <span className="text-xs text-text-2">Sua posição</span>
+        <span className="font-heading text-sm font-bold text-text tabular-nums">
+          {revealed > 0 ? `${me.position}º de ${rows.length}` : `${num(me.points)} pts`}
+        </span>
+      </div>
+      <div className="mt-2 flex items-center gap-1.5 text-[11px]">
+        {group.inBolao ? (
+          <span className="inline-flex items-center gap-1 text-success font-semibold">
+            <CheckIcon width={12} height={12} /> no bolão
+          </span>
+        ) : (
+          <span className="text-text-3">fora do bolão</span>
+        )}
+      </div>
+    </Link>
   );
 }
 
-function Row({
-  label,
-  value,
-  muted,
-  highlight,
+function CreateGroupModal({
+  open,
+  onClose,
+  onCreate,
 }: {
-  label: string;
-  value: string;
-  muted?: boolean;
-  highlight?: boolean;
+  open: boolean;
+  onClose: () => void;
+  onCreate: (name: string, cota: number) => void;
 }) {
+  const [name, setName] = useState("");
+  const [cota, setCota] = useState(50);
+  const [custom, setCustom] = useState(false);
+
   return (
-    <div className="flex items-center justify-between">
-      <span className={cn("text-sm", muted ? "text-text-3" : "text-text-2")}>{label}</span>
-      <span className={cn("font-heading font-bold tabular-nums", highlight ? "text-heat text-lg" : "text-text")}>
-        {value}
-      </span>
-    </div>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Criar grupo"
+      description="Você vira o dono e define a cota do bolão. Quem entrar monta o próprio pick'em."
+      width={480}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => onCreate(name, cota)} disabled={cota <= 0}>
+            Criar grupo
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4 py-1">
+        <div>
+          <label htmlFor="cg-name" className="block text-xs font-medium text-text-2 mb-1.5">
+            Nome do grupo
+          </label>
+          <input
+            id="cg-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={40}
+            placeholder="Ex: Resenha da Copa"
+            className="w-full rounded-btn border border-border bg-base px-3 h-11 text-text outline-none transition-colors focus:border-[rgba(197,242,48,0.55)] placeholder:text-text-3"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-text-2 mb-1.5">
+            Cota do bolão <span className="text-text-3">(o que cada um paga pra entrar)</span>
+          </label>
+          <div className="grid grid-cols-4 gap-2">
+            {COTA_PRESETS.map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => {
+                  setCota(v);
+                  setCustom(false);
+                }}
+                className={cn(
+                  "rounded-btn border h-10 text-sm font-semibold transition-colors",
+                  !custom && cota === v
+                    ? "border-brand text-brand bg-brand/10"
+                    : "border-border text-text-2 hover:text-text hover:border-border-strong",
+                )}
+              >
+                {money(v)}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCustom(true)}
+            className={cn(
+              "mt-2 text-xs font-semibold",
+              custom ? "text-brand" : "text-text-2 hover:text-text",
+            )}
+          >
+            Outro valor
+          </button>
+          {custom && (
+            <div className="mt-2 flex items-center rounded-btn border border-border bg-base px-3 h-11 focus-within:border-[rgba(197,242,48,0.55)]">
+              <span className="text-text-2 text-sm font-medium mr-1">R$</span>
+              <input
+                autoFocus
+                inputMode="numeric"
+                value={cota === 0 ? "" : cota}
+                onChange={(e) => setCota(Number(e.target.value.replace(/\D/g, "")) || 0)}
+                className="w-full bg-transparent font-heading text-lg font-bold text-text outline-none tabular-nums"
+              />
+            </div>
+          )}
+          <p className="mt-2 text-[11px] text-text-3">
+            Entrar no bolão é opcional pra cada participante. Quem ficar de fora segue valendo no ranking.
+          </p>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function JoinGroupModal({
+  open,
+  onClose,
+  onJoin,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onJoin: (code: string) => void;
+}) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState(false);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Entrar num grupo"
+      description="Cole o código de convite. Por link, é só abrir o link que você entra direto."
+      width={440}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              if (!code.trim()) return setError(true);
+              onJoin(code);
+            }}
+          >
+            Entrar no grupo
+          </Button>
+        </>
+      }
+    >
+      <div className="py-1">
+        <label htmlFor="jg-code" className="block text-xs font-medium text-text-2 mb-1.5">
+          Código de convite
+        </label>
+        <input
+          id="jg-code"
+          value={code}
+          onChange={(e) => {
+            setCode(e.target.value.toUpperCase());
+            setError(false);
+          }}
+          placeholder="Ex: COPA-7K-4F2A"
+          aria-invalid={error}
+          className={cn(
+            "w-full rounded-btn border bg-base px-3 h-11 text-text outline-none transition-colors placeholder:text-text-3 tracking-wider",
+            error ? "border-error" : "border-border focus:border-[rgba(197,242,48,0.55)]",
+          )}
+        />
+        <p className={cn("mt-1.5 text-xs", error ? "text-error" : "text-text-3")}>
+          {error ? "Informe um código para entrar." : "Dica da demo: use COPA-7K-4F2A."}
+        </p>
+      </div>
+    </Modal>
   );
 }

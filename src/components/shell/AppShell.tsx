@@ -18,8 +18,9 @@ const CASINO_GAMES = [
 
 const TABS = [
   { href: "/", label: "Visão geral" },
-  { href: "/palpites", label: "Meus palpites" },
-  { href: "/grupo", label: "Grupo & Pool" },
+  { href: "/palpites", label: "Meu pick'em" },
+  { href: "/ranking", label: "Ranking geral" },
+  { href: "/grupo", label: "Grupo & Bolão" },
 ];
 
 function CasinoSidebar({ pickEmActive }: { pickEmActive: boolean }) {

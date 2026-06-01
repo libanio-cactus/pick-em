@@ -2,34 +2,35 @@
 
 import { useEffect, useState } from "react";
 import type { Member, OrderMap, PickOption, PicksMap } from "@/data/types";
-import type { BracketPicks, TieId } from "@/data/bracket";
-import { MEMBERS, SEED_ORDER, favoritePicks, FRIENDS_GROUP } from "@/data/friends";
+import type { TieId, BracketPicks } from "@/data/bracket";
+import { applyBracketPick } from "@/data/bracket";
+import {
+  SEED_ORDER,
+  favoritePicks,
+  FRIENDS_GROUP,
+  DEMO_COTA,
+  rosterFor,
+} from "@/data/friends";
 import { TOTAL_MATCHES } from "@/data/groups";
 
-// Module-level store (padrão Cactus). Estado = lista de pick'ems do usuário.
-// Solo: ilimitados. Grupo: no máximo 1 (entrada do participante no ranking/pool).
+// Module-level store (padrão Cactus). 4fun: 1 pick'em por pessoa.
+// O jogador pode estar em VÁRIOS grupos; cada grupo tem seu bolão (cota própria).
 
-export type PickEmScope = "solo" | "group";
-
-export interface PickEm {
+export interface UserGroup {
   id: string;
   name: string;
-  scope: PickEmScope;
-  picks: PicksMap; // palpites de jogos (V/E/D)
-  order: OrderMap; // classificação prevista por grupo
-  bracket: BracketPicks; // mata-mata
-  stake: number;
-  confirmed: boolean;
+  cota: number; // valor da cota do bolão (definido pelo dono)
+  inBolao: boolean; // o usuário entrou no bolão deste grupo?
 }
 
 interface StoreState {
-  pickems: PickEm[];
-  /** Jogos já apurados na simulação (0..TOTAL_MATCHES) — global ao torneio. */
-  revealed: number;
-  // Grupo de amigos
-  inGroup: boolean;
-  groupName: string;
-  inPool: boolean;
+  picks: PicksMap;
+  order: OrderMap;
+  bracket: BracketPicks;
+  confirmed: boolean; // etapa 1: pick'em da fase de grupos
+  bracketConfirmed: boolean; // etapa 2: pick'em das eliminatórias
+  revealed: number; // jogos apurados (global ao torneio)
+  groups: UserGroup[]; // grupos em que o usuário está
 }
 
 function freshOrder(): OrderMap {
@@ -38,39 +39,18 @@ function freshOrder(): OrderMap {
   );
 }
 
-let _uid = 1;
-function newPickem(scope: PickEmScope, name?: string): PickEm {
-  const id = `pe_${_uid++}`;
-  return {
-    id,
-    name: name?.trim() || (scope === "group" ? "Pick'em do grupo" : "Meu pick'em"),
-    scope,
-    picks: {},
-    order: freshOrder(),
-    bracket: {},
-    stake: 50,
-    confirmed: false,
-  };
-}
-
 const INITIAL: StoreState = {
-  pickems: [],
+  picks: {},
+  order: freshOrder(),
+  bracket: {},
+  confirmed: false,
+  bracketConfirmed: false,
   revealed: 0,
-  inGroup: false,
-  groupName: "",
-  inPool: false,
-};
-
-const DEPENDENTS: Record<string, TieId[]> = {
-  qf1: ["sf1", "fi"],
-  qf2: ["sf1", "fi"],
-  qf3: ["sf2", "fi"],
-  qf4: ["sf2", "fi"],
-  sf1: ["fi"],
-  sf2: ["fi"],
+  groups: [],
 };
 
 let _state: StoreState = { ...INITIAL };
+let _gid = 1;
 const _subs = new Set<() => void>();
 
 function _notify() {
@@ -80,74 +60,37 @@ function _set(patch: Partial<StoreState>) {
   _state = { ..._state, ...patch };
   _notify();
 }
-function _updatePickem(id: string, fn: (p: PickEm) => PickEm) {
-  _set({ pickems: _state.pickems.map((p) => (p.id === id ? fn(p) : p)) });
+
+// ── Pick'em (edição) ───────────────────────────────────────────
+export function setPick(matchId: string, pick: PickOption) {
+  const picks = { ..._state.picks };
+  if (picks[matchId] === pick) delete picks[matchId];
+  else picks[matchId] = pick;
+  _set({ picks });
 }
 
-// ── Pick'ems: ciclo de vida ────────────────────────────────────
-export function createPickem(scope: PickEmScope = "solo", name?: string): string {
-  const pe = newPickem(scope, name);
-  _set({ pickems: [..._state.pickems, pe] });
-  return pe.id;
+export function setOrder(groupId: string, codes: string[]) {
+  _set({ order: { ..._state.order, [groupId]: codes } });
 }
 
-export function deletePickem(id: string) {
-  _set({ pickems: _state.pickems.filter((p) => p.id !== id) });
+export function setBracketPick(tie: TieId, teamCode: string) {
+  _set({ bracket: applyBracketPick(_state.bracket, tie, teamCode) });
 }
 
-export function confirmPickem(id: string) {
-  _updatePickem(id, (p) => ({ ...p, confirmed: true }));
+export function confirmPickem() {
+  _set({ confirmed: true });
 }
-
-/** Garante e devolve o id do pick'em do grupo (cria se não existir). */
-export function ensureGroupPickem(): string {
-  const existing = _state.pickems.find((p) => p.scope === "group");
-  if (existing) return existing.id;
-  const pe = newPickem("group", `Pick'em · ${_state.groupName || FRIENDS_GROUP.name}`);
-  _set({ pickems: [..._state.pickems, pe] });
-  return pe.id;
+export function confirmBracket() {
+  _set({ bracketConfirmed: true });
 }
-
-// ── Pick'ems: edição (por id) ──────────────────────────────────
-export function setPick(id: string, matchId: string, pick: PickOption) {
-  _updatePickem(id, (p) => {
-    const picks = { ...p.picks };
-    if (picks[matchId] === pick) delete picks[matchId];
-    else picks[matchId] = pick;
-    return { ...p, picks };
+export function resetPickem() {
+  _set({
+    picks: {},
+    order: freshOrder(),
+    bracket: {},
+    confirmed: false,
+    bracketConfirmed: false,
   });
-}
-
-export function setOrder(id: string, groupId: string, codes: string[]) {
-  _updatePickem(id, (p) => ({ ...p, order: { ...p.order, [groupId]: codes } }));
-}
-
-export function setStake(id: string, stake: number) {
-  _updatePickem(id, (p) => ({ ...p, stake: Math.max(0, stake) }));
-}
-
-export function setBracketPick(id: string, tie: TieId, teamCode: string) {
-  _updatePickem(id, (p) => {
-    const bracket: BracketPicks = { ...p.bracket };
-    if (bracket[tie] === teamCode) delete bracket[tie];
-    else bracket[tie] = teamCode;
-    for (const dep of DEPENDENTS[tie] ?? []) {
-      if (bracket[dep] && !valueStillReachable(bracket, dep)) delete bracket[dep];
-    }
-    return { ...p, bracket };
-  });
-}
-
-function valueStillReachable(bracket: BracketPicks, tie: TieId): boolean {
-  const sources: Record<string, [TieId, TieId]> = {
-    sf1: ["qf1", "qf2"],
-    sf2: ["qf3", "qf4"],
-    fi: ["sf1", "sf2"],
-  };
-  const picked = bracket[tie];
-  const src = sources[tie];
-  if (!picked || !src) return true;
-  return src.some((s) => bracket[s] === picked);
 }
 
 // ── Simulação (global) ─────────────────────────────────────────
@@ -161,37 +104,48 @@ export function revealNextGroup() {
   setRevealed((Math.floor(_state.revealed / 6) + 1) * 6);
 }
 
-// ── Grupo de amigos ────────────────────────────────────────────
-export function createGroup(name: string) {
-  _set({ inGroup: true, groupName: name.trim() || FRIENDS_GROUP.name });
+// ── Grupos (multi) + bolão ─────────────────────────────────────
+/** Cria um grupo (o usuário vira dono e define a cota). Retorna o id. */
+export function createGroup(name: string, cota: number): string {
+  const id = `g_${_gid++}`;
+  const group: UserGroup = {
+    id,
+    name: name.trim() || "Meu grupo",
+    cota: Math.max(0, cota),
+    inBolao: false,
+  };
+  _set({ groups: [..._state.groups, group] });
+  return id;
 }
-export function joinGroup(codeOrLink: string) {
-  void codeOrLink; // no protótipo qualquer código entra no grupo demo
-  _set({ inGroup: true, groupName: FRIENDS_GROUP.name });
+
+/** Entra via código/link — no protótipo cai no grupo demo. Retorna o id. */
+export function joinGroup(codeOrLink: string): string {
+  void codeOrLink;
+  const existing = _state.groups.find((g) => g.id === FRIENDS_GROUP.id);
+  if (existing) return existing.id;
+  const group: UserGroup = {
+    id: FRIENDS_GROUP.id,
+    name: FRIENDS_GROUP.name,
+    cota: DEMO_COTA,
+    inBolao: false,
+  };
+  _set({ groups: [..._state.groups, group] });
+  return group.id;
 }
-export function leaveGroup() {
+
+export function leaveGroup(id: string) {
+  _set({ groups: _state.groups.filter((g) => g.id !== id) });
+}
+
+export function joinBolao(id: string) {
   _set({
-    inGroup: false,
-    groupName: "",
-    inPool: false,
-    pickems: _state.pickems.filter((p) => p.scope !== "group"),
+    groups: _state.groups.map((g) => (g.id === id ? { ...g, inBolao: true } : g)),
   });
-}
-export function joinPool() {
-  _set({ inPool: true });
 }
 
 // ── Leitura ────────────────────────────────────────────────────
 export function getState(): StoreState {
   return _state;
-}
-
-/** Pick'em que representa "Você" no ranking: o do grupo (se houver) ou o solo mais recente. */
-export function representativePickem(s: StoreState): PickEm | undefined {
-  return (
-    s.pickems.find((p) => p.scope === "group") ??
-    [...s.pickems].reverse().find((p) => p.scope === "solo")
-  );
 }
 
 function useStore(): StoreState {
@@ -207,35 +161,32 @@ function useStore(): StoreState {
   return s;
 }
 
-/** Metadados globais (compat com chamadas existentes). */
-export function usePickEm() {
+export function usePickEm(): StoreState {
   return useStore();
 }
 
-export function usePickems(): PickEm[] {
-  return useStore().pickems;
+export function useGroups(): UserGroup[] {
+  return useStore().groups;
 }
 
-export function usePickemById(id: string | null | undefined): PickEm | undefined {
+export function useGroup(id: string | null | undefined): UserGroup | undefined {
   const s = useStore();
-  return id ? s.pickems.find((p) => p.id === id) : undefined;
+  return id ? s.groups.find((g) => g.id === id) : undefined;
 }
 
-export function useGroupPickem(): PickEm | undefined {
-  return useStore().pickems.find((p) => p.scope === "group");
-}
-
-/** Membros do grupo com "Você" refletindo o pick'em representativo. */
-export function useMembers(): Member[] {
+/** Roster de um grupo com "Você" refletindo o pick'em do usuário + bolão do grupo. */
+export function useGroupMembers(groupId: string): Member[] {
   const s = useStore();
-  const rep = representativePickem(s);
-  return MEMBERS.map((m) =>
+  const g = s.groups.find((x) => x.id === groupId);
+  const hasPicks = Object.keys(s.picks).length > 0;
+  return rosterFor(groupId).map((m) =>
     m.isCurrentUser
       ? {
           ...m,
-          picks: rep && Object.keys(rep.picks).length > 0 ? rep.picks : favoritePicks(),
-          order: rep ? rep.order : SEED_ORDER,
-          inPool: s.inPool,
+          picks: hasPicks ? s.picks : favoritePicks(),
+          order: s.order,
+          bracket: s.bracketConfirmed ? s.bracket : {},
+          inPool: g?.inBolao ?? false,
         }
       : m,
   );

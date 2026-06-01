@@ -115,16 +115,26 @@ const PLACEMENT_ODDS: number[][] = [
   [9.5, 5.6, 3.0, 1.85], // mais fraco: provável embaixo
 ];
 
-/** Odd de `code` terminar na posição `position` (0-based) do seu grupo. */
+/** Odd de `code` terminar na posição `position` (0-based) — peso de dificuldade. */
 export function placementOdd(groupId: string, code: string, position: number): number {
   const g = getGroup(groupId)!;
   const seedRank = g.seed.indexOf(code); // 0 = mais forte
   return PLACEMENT_ODDS[seedRank]?.[position] ?? 3.0;
 }
 
-/** Odd combinada da ordem prevista de um grupo (produto das 4 colocações). */
-export function orderOdd(groupId: string, order: string[]): number {
-  return order.reduce((acc, code, i) => acc * placementOdd(groupId, code, i), 1);
+/** Conversão canônica odd → pontos (dificuldade): favorito vale pouco, zebra muito. */
+export function pointsFromOdd(odd: number): number {
+  return Math.round(odd * 10);
+}
+
+/** Pontos de acertar `code` na `position` exata (ponderado por dificuldade). */
+export function placementPoints(groupId: string, code: string, position: number): number {
+  return Math.round(placementOdd(groupId, code, position) * 5);
+}
+
+/** Pontos potenciais da ordem prevista do grupo (se cravar a classificação exata). */
+export function orderPotentialPoints(groupId: string, order: string[]): number {
+  return order.reduce((acc, code, i) => acc + placementPoints(groupId, code, i), 0);
 }
 
 /** Conjunto de grupos totalmente apurados dado o nº de jogos revelados. */
@@ -146,6 +156,11 @@ export function groupRange(groupId: string): { start: number; end: number } {
     start += g.matches.length;
   }
   return { start: 0, end: 0 };
+}
+
+/** Time que terminou na posição `pos` (1-based) do grupo, no resultado real. */
+export function groupPlace(groupId: string, pos: number): string {
+  return getGroup(groupId)!.actualOrder[pos - 1];
 }
 
 /** Classificados reais (top-2 de cada grupo), na ordem A1,A2,B1,B2,... */
@@ -186,13 +201,14 @@ export function evaluateOrder(
     const realIdx = g.actualOrder.indexOf(code);
     const predictedAdvances = idx < QUALIFY_SLOTS;
     const reallyAdvances = realIdx < QUALIFY_SLOTS;
+    const odd = PLACEMENT_ODDS[g.seed.indexOf(code)]?.[idx] ?? 3.0;
     if (realIdx === idx) {
       states[code] = "correct";
-      points += 10;
+      points += Math.round(odd * 5); // colocação exata (ponderada)
       exact++;
     } else if (predictedAdvances === reallyAdvances) {
       states[code] = "partial";
-      points += 4;
+      points += Math.round(odd * 1.5); // acertou só o lado (classifica/elim)
     } else {
       states[code] = "incorrect";
     }

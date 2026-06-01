@@ -1,15 +1,20 @@
-import type { Member, OrderMap, PickOption, PicksMap, Standing } from "./types";
-import { ALL_MATCHES, GROUPS, apuradoGroupSet } from "./groups";
-import { tally, tablePoints } from "@/lib/scoring";
+import type { BracketPicks, Member, OrderMap, PickOption, PicksMap, Standing } from "./types";
+import { ALL_MATCHES, GROUPS } from "./groups";
+import { TIE_DEFS, ACTUAL_BRACKET, tieSides } from "./bracket";
+import { scorePickem } from "@/lib/scoring";
 
 export const FRIENDS_GROUP = {
   id: "g_amigos2026",
   name: "Resenha da Copa ⚽",
   inviteCode: "COPA-7K-4F2A",
   inviteLink: "https://7k.bet/pickem/g/COPA-7K-4F2A",
-  poolEntry: 50,
   houseMarginPct: 0.08,
 };
+
+/** Cota padrão do grupo demo (entrar por código). */
+export const DEMO_COTA = 50;
+/** Presets de cota oferecidos ao dono na criação do grupo. */
+export const COTA_PRESETS = [10, 25, 50, 100];
 
 // ── Defaults do usuário ────────────────────────────────────────
 /** Palpite padrão = favorito de cada jogo (menor odd). */
@@ -77,6 +82,28 @@ function genOrder(memberId: string, skill: number): OrderMap {
   return orders;
 }
 
+function genBracket(memberId: string, skill: number): BracketPicks {
+  const r = mulberry32(hashStr(memberId + "-bracket"));
+  const b: BracketPicks = {};
+  // TIE_DEFS está em ordem (oitavas → final), então cada chave já tem os lados prontos.
+  for (const def of TIE_DEFS) {
+    const opts = tieSides(def.tie, b).filter((o): o is string => !!o);
+    if (!opts.length) continue;
+    const real = ACTUAL_BRACKET[def.tie];
+    b[def.tie] = r() < skill && opts.includes(real) ? real : opts[Math.floor(r() * opts.length)];
+  }
+  return b;
+}
+
+/** Predições determinísticas de um jogador (para amigos e comunidade). */
+export function genPredictions(seed: string, skill: number) {
+  return {
+    picks: genPicks(seed, skill),
+    order: genOrder(seed, skill),
+    bracket: genBracket(seed, skill),
+  };
+}
+
 interface MemberSeed {
   id: string;
   name: string;
@@ -94,31 +121,49 @@ const SEEDS: MemberSeed[] = [
   { id: "u_teo", name: "Téo Ramos", avatar: "🦅", skill: 0.42, inPool: false },
 ];
 
-export const MEMBERS: Member[] = SEEDS.map((s) => ({
-  id: s.id,
-  name: s.name,
-  avatar: s.avatar,
-  isCurrentUser: s.isCurrentUser,
-  inPool: s.inPool,
-  picks: s.isCurrentUser ? favoritePicks() : genPicks(s.id, s.skill),
-  order: s.isCurrentUser ? SEED_ORDER : genOrder(s.id, s.skill),
-}));
+function toMember(s: MemberSeed): Member {
+  return {
+    id: s.id,
+    name: s.name,
+    avatar: s.avatar,
+    isCurrentUser: s.isCurrentUser,
+    inPool: s.inPool,
+    picks: s.isCurrentUser ? favoritePicks() : genPicks(s.id, s.skill),
+    order: s.isCurrentUser ? SEED_ORDER : genOrder(s.id, s.skill),
+    bracket: s.isCurrentUser ? {} : genBracket(s.id, s.skill),
+  };
+}
 
-// ── Ranking (tabela + jogos) ───────────────────────────────────
+/** Você (base, sem pick'em do store — o store injeta via useGroupMembers). */
+export const YOU_BASE: Member = toMember(SEEDS.find((s) => s.isCurrentUser)!);
+/** Pool de amigos mockados (4). */
+export const FRIENDS: Member[] = SEEDS.filter((s) => !s.isCurrentUser).map(toMember);
+/** Roster completo (compat). */
+export const MEMBERS: Member[] = [YOU_BASE, ...FRIENDS];
+
+/** Roster de um grupo: demo = todos; grupos criados = você + subconjunto seeded. */
+export function rosterFor(groupId: string): Member[] {
+  if (groupId === FRIENDS_GROUP.id) return MEMBERS;
+  const r = mulberry32(hashStr(groupId));
+  const shuffled = [...FRIENDS].sort(() => r() - 0.5);
+  const n = 2 + Math.floor(r() * 2); // 2–3 amigos
+  return [YOU_BASE, ...shuffled.slice(0, n)];
+}
+
+// ── Ranking (jogos + tabela + bracket, por pontos) ─────────────
 export function standings(members: Member[], revealed: number): Standing[] {
-  const apurado = apuradoGroupSet(revealed);
   const rows: Standing[] = members.map((member) => {
-    const t = tally(member.picks, revealed);
-    const tablePts = tablePoints(member.order, apurado);
+    const sc = scorePickem(member, revealed);
     return {
       member,
-      matchPts: t.points,
-      tablePts,
-      points: t.points + tablePts,
-      correct: t.correct,
-      decided: t.decided,
-      accuracy: t.decided > 0 ? t.correct / t.decided : 0,
-      bestStreak: t.bestStreak,
+      matchPts: sc.matchPts,
+      tablePts: sc.tablePts,
+      bracketPts: sc.bracketPts,
+      points: sc.total,
+      correct: sc.correct,
+      decided: sc.decided,
+      accuracy: sc.decided > 0 ? sc.correct / sc.decided : 0,
+      bestStreak: sc.bestStreak,
       position: 0,
     };
   });
@@ -132,9 +177,9 @@ export function standings(members: Member[], revealed: number): Standing[] {
   return rows;
 }
 
-export function poolSummary(members: Member[]) {
+export function poolSummary(members: Member[], cota: number) {
   const participants = members.filter((m) => m.inPool);
-  const total = participants.length * FRIENDS_GROUP.poolEntry;
+  const total = participants.length * cota;
   const prize = total * (1 - FRIENDS_GROUP.houseMarginPct);
   return {
     participants,
